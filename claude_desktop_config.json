@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "imagyn": {
+      "command": "python",
+      "args": ["E:\\Imagyn\\src\\imagyn\\server.py"],
+      "env": {
+        "IMAGYN_CONFIG": "E:\\Imagyn\\config.json"
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "comfyui_url": "http://localhost:8000",
+  "workflow_file": "workflows/FluxKrea.json",
+  "enable_loras": true,
+  "lora_folder_path": "E:\\AI\\ComfyUI\\models\\loras\\",
+  "output_folder": "output",
+  "max_concurrent_generations": 3,
+  "default_generation_timeout": 300
+}
