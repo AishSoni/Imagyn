@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from pathlib import Path
 
 import mcp.types as types
-from mcp.server import Server
+from mcp.server.lowlevel import Server
 from mcp.server.models import InitializationOptions
 import mcp.server.stdio
 
@@ -499,8 +499,8 @@ class MCPServer:
                     server_name="imagyn-mcp-server",
                     server_version="0.1.0",
                     capabilities=self.server.get_capabilities(
-                        notification_options=types.NotificationOptions(),
-                        experimental_capabilities=None,
+                        notification_options={},
+                        experimental_capabilities={},
                     ),
                 ),
             )
