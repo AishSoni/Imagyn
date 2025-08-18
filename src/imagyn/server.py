@@ -11,7 +11,7 @@ from pathlib import Path
 src_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(src_dir))
 
-from imagyn.mcp import MCPServer
+from imagyn.imagyn_server import MCPServer
 
 
 def main():
