@@ -74,6 +74,15 @@ class ImagynFastMCPServer:
             if loras and not self.config.enable_loras:
                 await ctx.warning("LoRAs are disabled in server configuration. Request will proceed without LoRAs.")
                 loras = []
+            elif self.config.enable_loras and not loras:
+                # Auto-select a LoRA if none specified but LoRAs are enabled
+                async with ComfyUIClient(self.config.comfyui_url) as temp_client:
+                    available_loras = await temp_client.get_available_loras(self.config.lora_folder_path)
+                    if available_loras:
+                        # Pick the first available LoRA
+                        selected_lora = available_loras[0].name
+                        loras = [selected_lora]
+                        await ctx.info(f"Auto-selected LoRA: {selected_lora}")
             
             async with ComfyUIClient(self.config.comfyui_url) as client:
                 # Check connection
@@ -91,7 +100,9 @@ class ImagynFastMCPServer:
                         seed=seed,
                         loras=loras if self.config.enable_loras else [],
                         width=width,
-                        height=height
+                        height=height,
+                        enable_loras=self.config.enable_loras,
+                        lora_folder=self.config.lora_folder_path
                     )
                     
                     # Store image

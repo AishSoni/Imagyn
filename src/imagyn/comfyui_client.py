@@ -105,6 +105,138 @@ class ComfyUIClient:
         
         return response.content
     
+    def _find_nodes_by_class_type(self, workflow: Dict[str, Any], class_type: str) -> List[str]:
+        """Find all nodes of a specific class type in the workflow"""
+        matching_nodes = []
+        for node_id, node_data in workflow.items():
+            if isinstance(node_data, dict) and node_data.get("class_type") == class_type:
+                matching_nodes.append(node_id)
+        return matching_nodes
+    
+    def _find_node_by_class_type(self, workflow: Dict[str, Any], class_type: str) -> Optional[str]:
+        """Find the first node of a specific class type in the workflow"""
+        nodes = self._find_nodes_by_class_type(workflow, class_type)
+        return nodes[0] if nodes else None
+    
+    def _apply_prompt_to_workflow(self, workflow: Dict[str, Any], prompt: str, negative_prompt: str = ""):
+        """Apply positive and negative prompts to appropriate nodes in the workflow"""
+        # Find CLIP Text Encode nodes for prompts
+        clip_text_nodes = self._find_nodes_by_class_type(workflow, "CLIPTextEncode")
+        
+        # Strategy: Look for nodes with text inputs and try to determine which is positive/negative
+        positive_node = None
+        negative_node = None
+        
+        for node_id in clip_text_nodes:
+            node = workflow[node_id]
+            current_text = node.get("inputs", {}).get("text", "").lower()
+            
+            # Heuristics to determine if this is a negative prompt node
+            if any(neg_word in current_text for neg_word in ["negative", "bad", "worst", "ugly", "blurry"]):
+                if negative_node is None:
+                    negative_node = node_id
+            else:
+                if positive_node is None:
+                    positive_node = node_id
+        
+        # If we couldn't determine by content, use order (first is usually positive)
+        if positive_node is None and clip_text_nodes:
+            positive_node = clip_text_nodes[0]
+        if negative_node is None and len(clip_text_nodes) > 1:
+            negative_node = clip_text_nodes[1]
+        
+        # Apply prompts
+        if positive_node:
+            workflow[positive_node]["inputs"]["text"] = prompt
+        if negative_node and negative_prompt:
+            workflow[negative_node]["inputs"]["text"] = negative_prompt
+        elif negative_prompt and positive_node:
+            # If no dedicated negative node, append to positive prompt
+            combined_prompt = f"{prompt}. Avoid: {negative_prompt}"
+            workflow[positive_node]["inputs"]["text"] = combined_prompt
+            
+        return positive_node, negative_node
+    
+    def _apply_seed_to_workflow(self, workflow: Dict[str, Any], seed: int):
+        """Apply seed to sampling nodes in the workflow"""
+        # Find sampling nodes that accept seeds
+        sampling_classes = ["KSampler", "KSamplerAdvanced", "SamplerCustom"]
+        
+        for class_type in sampling_classes:
+            nodes = self._find_nodes_by_class_type(workflow, class_type)
+            for node_id in nodes:
+                if "seed" in workflow[node_id].get("inputs", {}):
+                    workflow[node_id]["inputs"]["seed"] = seed
+    
+    def _apply_dimensions_to_workflow(self, workflow: Dict[str, Any], width: int, height: int):
+        """Apply dimensions to empty latent image nodes in the workflow"""
+        # Find Empty Latent Image nodes (various types)
+        latent_classes = ["EmptyLatentImage", "EmptySD3LatentImage", "EmptyFluxLatentImage"]
+        
+        for class_type in latent_classes:
+            nodes = self._find_nodes_by_class_type(workflow, class_type)
+            for node_id in nodes:
+                node = workflow[node_id]
+                if "width" in node.get("inputs", {}):
+                    node["inputs"]["width"] = width
+                if "height" in node.get("inputs", {}):
+                    node["inputs"]["height"] = height
+    
+    def _apply_loras_to_workflow(self, workflow: Dict[str, Any], loras: List[str], enable_loras: bool, lora_folder: str = None):
+        """Apply LoRAs to LoRA loader nodes in the workflow"""
+        if not enable_loras or not loras:
+            return
+            
+        # Find LoRA loader nodes
+        lora_nodes = self._find_nodes_by_class_type(workflow, "LoraLoader")
+        
+        # Apply first LoRA to first LoRA node (can be extended for multiple LoRAs)
+        if lora_nodes and loras:
+            lora_node_id = lora_nodes[0]
+            lora_node = workflow[lora_node_id]
+            
+            # Set LoRA name (add .safetensors extension if not present)
+            lora_name = loras[0]
+            if not lora_name.endswith('.safetensors'):
+                lora_name += '.safetensors'
+            
+            # Verify LoRA exists if folder is provided
+            if lora_folder:
+                lora_path = Path(lora_folder) / lora_name
+                if not lora_path.exists():
+                    # Try to find a similar LoRA
+                    available_loras = self._get_available_loras(lora_folder)
+                    if available_loras:
+                        lora_name = available_loras[0].name + '.safetensors'
+                
+            lora_node["inputs"]["lora_name"] = lora_name
+            
+            # Set default strengths if they exist
+            if "strength_model" in lora_node["inputs"]:
+                lora_node["inputs"]["strength_model"] = 1.0
+            if "strength_clip" in lora_node["inputs"]:
+                lora_node["inputs"]["strength_clip"] = 1.0
+    
+    def _get_available_loras(self, lora_folder: str) -> List:
+        """Get list of available LoRA models from folder"""
+        from .models import LoRAInfo
+        
+        loras = []
+        if not lora_folder or not os.path.exists(lora_folder):
+            return loras
+        
+        lora_path = Path(lora_folder)
+        for lora_file in lora_path.glob("*.safetensors"):
+            lora_info = LoRAInfo(
+                name=lora_file.stem,
+                file_path=str(lora_file),
+                description=f"LoRA model: {lora_file.stem}",
+                tags=["lora", "style"]
+            )
+            loras.append(lora_info)
+        
+        return loras
+
     async def generate_image(
         self,
         workflow_template: Dict[str, Any],
@@ -113,43 +245,30 @@ class ComfyUIClient:
         seed: Optional[int] = None,
         loras: Optional[List[str]] = None,
         width: int = 1024,
-        height: int = 1024
+        height: int = 1024,
+        enable_loras: bool = True,
+        lora_folder: str = None
     ) -> Tuple[bytes, GenerationMetadata]:
-        """Generate an image using the provided workflow template"""
+        """Generate an image using the provided workflow template (workflow-agnostic)"""
         
         # Create a copy of the workflow template
         workflow = json.loads(json.dumps(workflow_template))
         
-        # Set the prompt
-        if "2" in workflow:  # Positive prompt node
-            workflow["2"]["inputs"]["text"] = prompt
-        
-        # Set negative prompt
-        if "5" in workflow:  # Negative prompt node
-            workflow["5"]["inputs"]["text"] = negative_prompt
-        
-        # Set seed
+        # Generate seed if not provided
         if seed is None:
             seed = int(time.time()) % (2**32)
-        if "3" in workflow:  # KSampler node
-            workflow["3"]["inputs"]["seed"] = seed
         
-        # Set dimensions
-        if "4" in workflow:  # Empty latent image node
-            workflow["4"]["inputs"]["width"] = width
-            workflow["4"]["inputs"]["height"] = height
+        # Apply prompts dynamically
+        positive_node, negative_node = self._apply_prompt_to_workflow(workflow, prompt, negative_prompt)
         
-        # Apply LoRAs if provided and LoRA loader node exists
-        if loras and "8" in workflow:  # LoRA loader node
-            if len(loras) > 0:
-                # For now, use the first LoRA (in a full implementation, 
-                # you'd chain multiple LoRA loaders)
-                lora_name = f"{loras[0]}.safetensors"
-                workflow["8"]["inputs"]["lora_name"] = lora_name
-                workflow["8"]["inputs"]["strength_model"] = 1.0
-                workflow["8"]["inputs"]["strength_clip"] = 1.0
-            else:
-                workflow["8"]["inputs"]["lora_name"] = "None"
+        # Apply seed to sampling nodes
+        self._apply_seed_to_workflow(workflow, seed)
+        
+        # Apply dimensions to latent nodes
+        self._apply_dimensions_to_workflow(workflow, width, height)
+        
+        # Apply LoRAs if enabled
+        self._apply_loras_to_workflow(workflow, loras or [], enable_loras, lora_folder)
         
         start_time = time.time()
         
@@ -165,7 +284,7 @@ class ComfyUIClient:
         outputs = history.get("outputs", {})
         save_image_outputs = None
         
-        # Find the SaveImage node output (usually node "7")
+        # Find the SaveImage node output (node 9 in this workflow)
         for node_id, node_output in outputs.items():
             if "images" in node_output:
                 save_image_outputs = node_output["images"]
@@ -196,21 +315,6 @@ class ComfyUIClient:
         
         return image_data, metadata
     
-    async def get_available_loras(self, lora_folder: str) -> List[LoRAInfo]:
+    async def get_available_loras(self, lora_folder: str) -> List:
         """Get list of available LoRA models"""
-        loras = []
-        
-        if not os.path.exists(lora_folder):
-            return loras
-        
-        lora_path = Path(lora_folder)
-        for lora_file in lora_path.glob("*.safetensors"):
-            lora_info = LoRAInfo(
-                name=lora_file.stem,
-                file_path=str(lora_file),
-                description=f"LoRA model: {lora_file.stem}",
-                tags=["lora", "style"]
-            )
-            loras.append(lora_info)
-        
-        return loras
+        return self._get_available_loras(lora_folder)

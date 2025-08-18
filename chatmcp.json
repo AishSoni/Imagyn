@@ -21,10 +21,8 @@
     "Imagyn MCP": {
       "name": "Imagyn MCP",
       "type": "stdio",
-      "command": "python",
-      "args": [
-        "E:\\Imagyn\\stdio_mcp_server.py"
-      ],
+      "command": "E:\\Imagyn\\run_mcp_server.bat",
+      "args": [],
       "env": {
         "IMAGYN_CONFIG": "E:\\Imagyn\\config.json"
       },
