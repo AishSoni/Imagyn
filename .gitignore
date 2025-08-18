@@ -1,1 +1,3 @@
 /imagyn_venv
+/.venv
+*.pyc

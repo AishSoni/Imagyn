@@ -4,6 +4,6 @@ __version__ = "0.1.0"
 __author__ = "Aish Soni"
 __email__ = "aishsoni15@gmail.com"
 
-from .server import ImagynServer
+from .mcp import MCPServer
 
-__all__ = ["ImagynServer"]
+__all__ = ["MCPServer"]
