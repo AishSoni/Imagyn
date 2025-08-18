@@ -1,0 +1,34 @@
+{
+  "mcpServers": {
+    "Math": {
+      "name": "Math",
+      "type": "inmemory",
+      "command": "math",
+      "env": {},
+      "args": [],
+      "tools": [],
+      "installed": true
+    },
+    "Artifact Instructions": {
+      "name": "Artifact Instructions",
+      "type": "inmemory",
+      "command": "artifact_instructions",
+      "env": {},
+      "args": [],
+      "tools": [],
+      "installed": true
+    },
+    "Imagyn MCP": {
+      "name": "Imagyn MCP",
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "E:\\Imagyn\\stdio_mcp_server.py"
+      ],
+      "env": {
+        "IMAGYN_CONFIG": "E:\\Imagyn\\config.json"
+      },
+      "auto_approve": false
+    }
+  }
+}
