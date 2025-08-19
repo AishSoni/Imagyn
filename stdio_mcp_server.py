@@ -235,7 +235,7 @@ async def generate_image(arguments: dict) -> list[types.TextContent | types.Imag
         client_id = str(uuid.uuid4())
         
         # Test connection
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             try:
                 response = await client.get(f"{base_url}/system_stats")
                 if response.status_code != 200:
@@ -293,7 +293,7 @@ async def generate_image(arguments: dict) -> list[types.TextContent | types.Imag
                 
                 while time.time() - start_ws_time < timeout:
                     try:
-                        message = await asyncio.wait_for(websocket.recv(), timeout=5.0)
+                        message = await asyncio.wait_for(websocket.recv(), timeout=30.0)
                         data = json.loads(message)
                         
                         if data["type"] == "executing":
