@@ -8,9 +8,7 @@ import uuid
 import websockets
 import httpx
 import base64
-import os
 from typing import Dict, List, Optional, Any, Tuple
-from pathlib import Path
 import time
 
 from .models import ComfyUIWorkflowRequest, GenerationMetadata, LoRAInfo
@@ -184,7 +182,7 @@ class ComfyUIClient:
                 if "height" in node.get("inputs", {}):
                     node["inputs"]["height"] = height
     
-    def _apply_loras_to_workflow(self, workflow: Dict[str, Any], loras: List[str], enable_loras: bool, lora_folder: str = None):
+    async def _apply_loras_to_workflow(self, workflow: Dict[str, Any], loras: List[str], enable_loras: bool):
         """Apply LoRAs to LoRA loader nodes in the workflow"""
         if not enable_loras or not loras:
             return
@@ -197,21 +195,34 @@ class ComfyUIClient:
             lora_node_id = lora_nodes[0]
             lora_node = workflow[lora_node_id]
             
-            # Set LoRA name (add .safetensors extension if not present)
-            lora_name = loras[0]
-            if not lora_name.endswith('.safetensors'):
-                lora_name += '.safetensors'
+            # Get available LoRAs from server to validate
+            available_loras = await self._get_available_loras_from_server()
+            available_lora_names = [lora.file_path for lora in available_loras]
             
-            # Verify LoRA exists if folder is provided
-            if lora_folder:
-                lora_path = Path(lora_folder) / lora_name
-                if not lora_path.exists():
-                    # Try to find a similar LoRA
-                    available_loras = self._get_available_loras(lora_folder)
-                    if available_loras:
-                        lora_name = available_loras[0].name + '.safetensors'
+            # Find the best match for the requested LoRA
+            lora_name = loras[0]
+            
+            # Try exact match first
+            if lora_name in available_lora_names:
+                selected_lora = lora_name
+            elif f"{lora_name}.safetensors" in available_lora_names:
+                selected_lora = f"{lora_name}.safetensors"
+            else:
+                # Try to find a partial match
+                selected_lora = None
+                for available_lora in available_lora_names:
+                    if lora_name.lower() in available_lora.lower():
+                        selected_lora = available_lora
+                        break
                 
-            lora_node["inputs"]["lora_name"] = lora_name
+                # If no match found, use the first available LoRA as fallback
+                if not selected_lora and available_lora_names:
+                    selected_lora = available_lora_names[0]
+                elif not selected_lora:
+                    # No LoRAs available at all, skip application
+                    return
+            
+            lora_node["inputs"]["lora_name"] = selected_lora
             
             # Set default strengths if they exist
             if "strength_model" in lora_node["inputs"]:
@@ -219,25 +230,47 @@ class ComfyUIClient:
             if "strength_clip" in lora_node["inputs"]:
                 lora_node["inputs"]["strength_clip"] = 1.0
     
-    def _get_available_loras(self, lora_folder: str) -> List:
-        """Get list of available LoRA models from folder"""
+    async def _get_available_loras_from_server(self) -> List:
+        """Get list of available LoRA models from ComfyUI server"""
         from .models import LoRAInfo
         
-        loras = []
-        if not lora_folder or not os.path.exists(lora_folder):
+        try:
+            # Query the object_info endpoint to get available models
+            response = await self.http_client.get(f"{self.base_url}/object_info")
+            response.raise_for_status()
+            
+            object_info = response.json()
+            loras = []
+            
+            # Look for LoraLoader node information
+            lora_loader_info = object_info.get("LoraLoader", {})
+            input_info = lora_loader_info.get("input", {})
+            required_inputs = input_info.get("required", {})
+            
+            # Get LoRA names from the lora_name input options
+            if "lora_name" in required_inputs:
+                lora_options = required_inputs["lora_name"]
+                # lora_options is typically a list where first element contains the available options
+                if isinstance(lora_options, list) and len(lora_options) > 0:
+                    available_loras = lora_options[0]
+                    if isinstance(available_loras, list):
+                        for lora_name in available_loras:
+                            # Remove file extension for display name
+                            display_name = lora_name.replace('.safetensors', '').replace('.ckpt', '')
+                            lora_info = LoRAInfo(
+                                name=display_name,
+                                file_path=lora_name,  # Keep full filename for ComfyUI
+                                description=f"LoRA model: {display_name}",
+                                tags=["lora", "style"]
+                            )
+                            loras.append(lora_info)
+            
             return loras
-        
-        lora_path = Path(lora_folder)
-        for lora_file in lora_path.glob("*.safetensors"):
-            lora_info = LoRAInfo(
-                name=lora_file.stem,
-                file_path=str(lora_file),
-                description=f"LoRA model: {lora_file.stem}",
-                tags=["lora", "style"]
-            )
-            loras.append(lora_info)
-        
-        return loras
+            
+        except Exception as e:
+            # Fallback to empty list if server query fails
+            print(f"Failed to query LoRAs from ComfyUI server: {e}")
+            return []
 
     async def generate_image(
         self,
@@ -248,8 +281,7 @@ class ComfyUIClient:
         loras: Optional[List[str]] = None,
         width: int = 1024,
         height: int = 1024,
-        enable_loras: bool = True,
-        lora_folder: str = None
+        enable_loras: bool = True
     ) -> Tuple[bytes, GenerationMetadata]:
         """Generate an image using the provided workflow template (workflow-agnostic)"""
         
@@ -269,8 +301,8 @@ class ComfyUIClient:
         # Apply dimensions to latent nodes
         self._apply_dimensions_to_workflow(workflow, width, height)
         
-        # Apply LoRAs if enabled
-        self._apply_loras_to_workflow(workflow, loras or [], enable_loras, lora_folder)
+        # Apply LoRAs if enabled (now async)
+        await self._apply_loras_to_workflow(workflow, loras or [], enable_loras)
         
         start_time = time.time()
         
@@ -317,6 +349,6 @@ class ComfyUIClient:
         
         return image_data, metadata
     
-    async def get_available_loras(self, lora_folder: str) -> List:
-        """Get list of available LoRA models"""
-        return self._get_available_loras(lora_folder)
+    async def get_available_loras(self) -> List:
+        """Get list of available LoRA models from ComfyUI server"""
+        return await self._get_available_loras_from_server()

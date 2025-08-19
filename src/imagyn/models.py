@@ -15,7 +15,6 @@ class ImagynConfig:
     comfyui_url: str
     workflow_file: str
     enable_loras: bool
-    lora_folder_path: str
     output_folder: str
     max_concurrent_generations: int = 3
     default_generation_timeout: int = 300
@@ -30,6 +29,9 @@ class ImagynConfig:
         
         with open(config_path, 'r') as f:
             config_data = json.load(f)
+        
+        # Remove deprecated lora_folder_path if present for backward compatibility
+        config_data.pop('lora_folder_path', None)
         
         return cls(**config_data)
 

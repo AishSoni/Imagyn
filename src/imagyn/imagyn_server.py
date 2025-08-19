@@ -230,7 +230,8 @@ class MCPServer:
                     seed=seed,
                     loras=loras if self.config.enable_loras else [],
                     width=width,
-                    height=height
+                    height=height,
+                    enable_loras=self.config.enable_loras
                 )
                 
                 # Store image
@@ -308,7 +309,8 @@ class MCPServer:
                     seed=None,  # Use random seed for variation
                     loras=loras if self.config.enable_loras else [],
                     width=original_image.metadata.width,
-                    height=original_image.metadata.height
+                    height=original_image.metadata.height,
+                    enable_loras=self.config.enable_loras
                 )
                 
                 # Store the edited image
@@ -359,12 +361,19 @@ class MCPServer:
             websocket_timeout=self.config.websocket_timeout
         ) as client:
             try:
-                loras = await client.get_available_loras(self.config.lora_folder_path)
+                # Check connection first
+                if not await client.check_connection():
+                    return [types.TextContent(
+                        type="text",
+                        text=f"Error: Cannot connect to ComfyUI server at {self.config.comfyui_url}"
+                    )]
+                
+                loras = await client.get_available_loras()
                 
                 if not loras:
                     return [types.TextContent(
                         type="text",
-                        text=f"No LoRA models found in: {self.config.lora_folder_path}"
+                        text="No LoRA models found on the ComfyUI server."
                     )]
                 
                 lora_list = []
@@ -373,14 +382,14 @@ class MCPServer:
                 
                 return [types.TextContent(
                     type="text",
-                    text=f"Available LoRA Models ({len(loras)} found):\n\n" + "\n".join(lora_list)
+                    text=f"Available LoRA Models ({len(loras)} found from ComfyUI server):\n\n" + "\n".join(lora_list)
                 )]
                 
             except Exception as e:
-                logger.error(f"Failed to list LoRAs: {e}")
+                logger.error(f"Failed to list LoRAs from ComfyUI server: {e}")
                 return [types.TextContent(
                     type="text",
-                    text=f"Failed to list LoRAs: {str(e)}"
+                    text=f"Failed to list LoRAs from ComfyUI server: {str(e)}"
                 )]
     
     async def _handle_get_history(self, arguments: dict) -> list[types.TextContent]:
@@ -461,8 +470,7 @@ class MCPServer:
 **ComfyUI Connection:** {'✅ Connected' if comfyui_status else '❌ Disconnected'}
 **ComfyUI URL:** {self.config.comfyui_url}
 **Workflow File:** {self.config.workflow_file}
-**LoRAs Enabled:** {'✅ Yes' if self.config.enable_loras else '❌ No'}
-**LoRA Folder:** {self.config.lora_folder_path if self.config.enable_loras else 'N/A'}
+**LoRAs Enabled:** {'✅ Yes (queried from ComfyUI server)' if self.config.enable_loras else '❌ No'}
 **Output Folder:** {self.config.output_folder}
 **Max Concurrent Generations:** {self.config.max_concurrent_generations}
 
@@ -496,11 +504,6 @@ class MCPServer:
             if not workflow_path.exists():
                 logger.error(f"Workflow file not found: {self.config.workflow_file}")
                 return
-            
-            if self.config.enable_loras:
-                lora_path = Path(self.config.lora_folder_path)
-                if not lora_path.exists():
-                    logger.warning(f"LoRA folder not found: {self.config.lora_folder_path}")
         
         except Exception as e:
             logger.error(f"Configuration validation failed: {e}")
@@ -508,7 +511,7 @@ class MCPServer:
         
         logger.info(f"ComfyUI URL: {self.config.comfyui_url}")
         logger.info(f"Workflow: {self.config.workflow_file}")
-        logger.info(f"LoRAs enabled: {self.config.enable_loras}")
+        logger.info(f"LoRAs enabled: {self.config.enable_loras} (queried from ComfyUI server)")
         logger.info(f"Output folder: {self.config.output_folder}")
         
         # Run the MCP server
