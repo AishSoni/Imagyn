@@ -19,11 +19,13 @@ from .models import ComfyUIWorkflowRequest, GenerationMetadata, LoRAInfo
 class ComfyUIClient:
     """Client for interacting with ComfyUI API"""
     
-    def __init__(self, base_url: str = "http://localhost:8188"):
+    def __init__(self, base_url: str = "http://localhost:8188", http_timeout: float = 60.0, websocket_timeout: float = 30.0):
         self.base_url = base_url.rstrip('/')
         self.ws_url = self.base_url.replace('http', 'ws')
         self.client_id = str(uuid.uuid4())
-        self.http_client = httpx.AsyncClient(timeout=30.0)
+        self.http_timeout = http_timeout
+        self.websocket_timeout = websocket_timeout
+        self.http_client = httpx.AsyncClient(timeout=self.http_timeout)
     
     async def __aenter__(self):
         return self
@@ -64,7 +66,7 @@ class ComfyUIClient:
         async with websockets.connect(ws_url) as websocket:
             while time.time() - start_time < timeout:
                 try:
-                    message = await asyncio.wait_for(websocket.recv(), timeout=5.0)
+                    message = await asyncio.wait_for(websocket.recv(), timeout=self.websocket_timeout)
                     data = json.loads(message)
                     
                     if data["type"] == "executing":

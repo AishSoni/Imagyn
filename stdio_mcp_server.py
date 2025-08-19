@@ -185,6 +185,14 @@ async def get_server_status() -> list[types.TextContent]:
         "comfyui_url": server_config.get("comfyui_url", "Not configured") if server_config else "Not configured"
     }
     
+    # Add timeout configurations if config is loaded
+    if server_config:
+        status["timeouts"] = {
+            "http_timeout": server_config.get("http_timeout", 60.0),
+            "websocket_timeout": server_config.get("websocket_timeout", 30.0),
+            "generation_timeout": server_config.get("default_generation_timeout", 300)
+        }
+    
     return [types.TextContent(
         type="text", 
         text=json.dumps(status, indent=2)
@@ -234,8 +242,13 @@ async def generate_image(arguments: dict) -> list[types.TextContent | types.Imag
         base_url = server_config.get("comfyui_url", "http://localhost:8188").rstrip('/')
         client_id = str(uuid.uuid4())
         
+        # Get timeout configurations from config
+        http_timeout = server_config.get("http_timeout", 60.0)
+        websocket_timeout = server_config.get("websocket_timeout", 30.0)
+        generation_timeout = server_config.get("default_generation_timeout", 300)
+        
         # Test connection
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=http_timeout) as client:
             try:
                 response = await client.get(f"{base_url}/system_stats")
                 if response.status_code != 200:
@@ -288,12 +301,11 @@ async def generate_image(arguments: dict) -> list[types.TextContent | types.Imag
             ws_url = base_url.replace('http', 'ws') + f"/ws?clientId={client_id}"
             
             async with websockets.connect(ws_url) as websocket:
-                timeout = 300  # 5 minutes
                 start_ws_time = time.time()
                 
-                while time.time() - start_ws_time < timeout:
+                while time.time() - start_ws_time < generation_timeout:
                     try:
-                        message = await asyncio.wait_for(websocket.recv(), timeout=30.0)
+                        message = await asyncio.wait_for(websocket.recv(), timeout=websocket_timeout)
                         data = json.loads(message)
                         
                         if data["type"] == "executing":

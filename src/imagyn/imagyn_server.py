@@ -208,7 +208,11 @@ class MCPServer:
                 text="LoRAs are disabled in server configuration. Request will proceed without LoRAs."
             )]
         
-        async with ComfyUIClient(self.config.comfyui_url) as client:
+        async with ComfyUIClient(
+            self.config.comfyui_url,
+            http_timeout=self.config.http_timeout,
+            websocket_timeout=self.config.websocket_timeout
+        ) as client:
             # Check connection
             if not await client.check_connection():
                 return [types.TextContent(
@@ -283,7 +287,11 @@ class MCPServer:
         
         # For now, treat image editing as a new generation with the same parameters
         # In a full implementation, this would use img2img workflows
-        async with ComfyUIClient(self.config.comfyui_url) as client:
+        async with ComfyUIClient(
+            self.config.comfyui_url,
+            http_timeout=self.config.http_timeout,
+            websocket_timeout=self.config.websocket_timeout
+        ) as client:
             if not await client.check_connection():
                 return [types.TextContent(
                     type="text",
@@ -345,7 +353,11 @@ class MCPServer:
                 text="LoRAs are disabled in server configuration."
             )]
         
-        async with ComfyUIClient(self.config.comfyui_url) as client:
+        async with ComfyUIClient(
+            self.config.comfyui_url,
+            http_timeout=self.config.http_timeout,
+            websocket_timeout=self.config.websocket_timeout
+        ) as client:
             try:
                 loras = await client.get_available_loras(self.config.lora_folder_path)
                 
@@ -434,7 +446,11 @@ class MCPServer:
         
         try:
             # Check ComfyUI connection
-            async with ComfyUIClient(self.config.comfyui_url) as client:
+            async with ComfyUIClient(
+                self.config.comfyui_url,
+                http_timeout=self.config.http_timeout,
+                websocket_timeout=self.config.websocket_timeout
+            ) as client:
                 comfyui_status = await client.check_connection()
             
             # Get storage stats
@@ -449,6 +465,11 @@ class MCPServer:
 **LoRA Folder:** {self.config.lora_folder_path if self.config.enable_loras else 'N/A'}
 **Output Folder:** {self.config.output_folder}
 **Max Concurrent Generations:** {self.config.max_concurrent_generations}
+
+**Timeout Configuration:**
+- HTTP Timeout: {self.config.http_timeout}s
+- WebSocket Timeout: {self.config.websocket_timeout}s  
+- Generation Timeout: {self.config.default_generation_timeout}s
 
 **Storage Statistics:**
 - Total Images: {storage_stats['total_images']}

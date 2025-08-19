@@ -76,7 +76,11 @@ class ImagynFastMCPServer:
                 loras = []
             elif self.config.enable_loras and not loras:
                 # Auto-select a LoRA if none specified but LoRAs are enabled
-                async with ComfyUIClient(self.config.comfyui_url) as temp_client:
+                async with ComfyUIClient(
+                    self.config.comfyui_url,
+                    http_timeout=self.config.http_timeout,
+                    websocket_timeout=self.config.websocket_timeout
+                ) as temp_client:
                     available_loras = await temp_client.get_available_loras(self.config.lora_folder_path)
                     if available_loras:
                         # Pick the first available LoRA
@@ -84,7 +88,11 @@ class ImagynFastMCPServer:
                         loras = [selected_lora]
                         await ctx.info(f"Auto-selected LoRA: {selected_lora}")
             
-            async with ComfyUIClient(self.config.comfyui_url) as client:
+            async with ComfyUIClient(
+                self.config.comfyui_url,
+                http_timeout=self.config.http_timeout,
+                websocket_timeout=self.config.websocket_timeout
+            ) as client:
                 # Check connection
                 if not await client.check_connection():
                     await ctx.error(f"Cannot connect to ComfyUI server at {self.config.comfyui_url}")
@@ -164,7 +172,11 @@ class ImagynFastMCPServer:
                 if not original_path.exists():
                     return {"error": f"Original image file not found: {original_image.file_path}"}
                 
-                async with ComfyUIClient(self.config.comfyui_url) as client:
+                async with ComfyUIClient(
+                    self.config.comfyui_url,
+                    http_timeout=self.config.http_timeout,
+                    websocket_timeout=self.config.websocket_timeout
+                ) as client:
                     if not await client.check_connection():
                         return {"error": f"Cannot connect to ComfyUI server at {self.config.comfyui_url}"}
                     
@@ -325,7 +337,11 @@ class ImagynFastMCPServer:
                 # Check ComfyUI connection
                 comfyui_status = "unknown"
                 try:
-                    async with ComfyUIClient(self.config.comfyui_url) as client:
+                    async with ComfyUIClient(
+                        self.config.comfyui_url,
+                        http_timeout=self.config.http_timeout,
+                        websocket_timeout=self.config.websocket_timeout
+                    ) as client:
                         if await client.check_connection():
                             comfyui_status = "connected"
                         else:
@@ -352,7 +368,9 @@ class ImagynFastMCPServer:
                         "lora_folder": self.config.lora_folder_path,
                         "output_folder": self.config.output_folder,
                         "max_concurrent_generations": self.config.max_concurrent_generations,
-                        "default_timeout": self.config.default_generation_timeout
+                        "default_timeout": self.config.default_generation_timeout,
+                        "http_timeout": self.config.http_timeout,
+                        "websocket_timeout": self.config.websocket_timeout
                     },
                     "storage": storage_stats
                 }

@@ -5,5 +5,7 @@
   "lora_folder_path": "E:\\AI\\ComfyUI\\models\\loras\\",
   "output_folder": "output",
   "max_concurrent_generations": 3,
-  "default_generation_timeout": 300
+  "default_generation_timeout": 300,
+  "http_timeout": 60.0,
+  "websocket_timeout": 30.0
 }

@@ -19,6 +19,8 @@ class ImagynConfig:
     output_folder: str
     max_concurrent_generations: int = 3
     default_generation_timeout: int = 300
+    http_timeout: float = 60.0
+    websocket_timeout: float = 30.0
 
     @classmethod
     def load_from_file(cls, config_path: str = "config.json") -> "ImagynConfig":
