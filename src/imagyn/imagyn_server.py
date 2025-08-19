@@ -16,6 +16,7 @@ import mcp.server.stdio
 
 from .models import ImagynConfig
 from .comfyui_client import ComfyUIClient
+from .replicate_client import ReplicateClient
 from .storage import ImageStorage
 
 # Set up logging
@@ -30,13 +31,21 @@ class MCPServer:
         self.config = ImagynConfig.load_from_file(config_path)
         self.server = Server("imagyn-mcp-server")
         self.storage = ImageStorage(self.config.output_folder)
-        self.workflow_template = self._load_workflow_template()
+        
+        # Load workflow template only if using ComfyUI
+        if self.config.provider == "comfyui":
+            self.workflow_template = self._load_workflow_template()
+        else:
+            self.workflow_template = None
         
         # Setup MCP tools
         self._setup_tools()
     
     def _load_workflow_template(self) -> Dict[str, Any]:
         """Load the ComfyUI workflow template"""
+        if not self.config.workflow_file:
+            raise ValueError("workflow_file is required for ComfyUI provider")
+            
         workflow_path = Path(self.config.workflow_file)
         if not workflow_path.exists():
             raise FileNotFoundError(f"Workflow file not found: {self.config.workflow_file}")
@@ -50,10 +59,10 @@ class MCPServer:
         @self.server.list_tools()
         async def handle_list_tools() -> list[types.Tool]:
             """List available tools"""
-            return [
+            tools = [
                 types.Tool(
                     name="generate_image",
-                    description="Generate an image from a text prompt using ComfyUI workflows",
+                    description=f"Generate an image from a text prompt using {self.config.provider}",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -63,14 +72,8 @@ class MCPServer:
                             },
                             "negative_prompt": {
                                 "type": "string",
-                                "description": "Negative prompt to avoid certain elements",
+                                "description": "Negative prompt to avoid certain elements (ComfyUI only)",
                                 "default": ""
-                            },
-                            "loras": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "List of LoRA names to apply (if enabled)",
-                                "default": []
                             },
                             "width": {
                                 "type": "integer",
@@ -88,51 +91,6 @@ class MCPServer:
                             }
                         },
                         "required": ["prompt"]
-                    }
-                ),
-                types.Tool(
-                    name="edit_generated_image",
-                    description="Edit or refine a previously generated image",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "image_id": {
-                                "type": "string",
-                                "description": "ID of the image to edit"
-                            },
-                            "new_prompt": {
-                                "type": "string",
-                                "description": "New or modified prompt for the edit"
-                            },
-                            "negative_prompt": {
-                                "type": "string",
-                                "description": "Negative prompt for the edit",
-                                "default": ""
-                            },
-                            "loras": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "LoRAs to apply for the edit",
-                                "default": []
-                            },
-                            "edit_strength": {
-                                "type": "number",
-                                "description": "Denoising strength for edit (0.1-1.0)",
-                                "minimum": 0.1,
-                                "maximum": 1.0,
-                                "default": 0.7
-                            }
-                        },
-                        "required": ["image_id", "new_prompt"]
-                    }
-                ),
-                types.Tool(
-                    name="list_available_loras",
-                    description="List available LoRA models for image generation",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {},
-                        "additionalProperties": False
                     }
                 ),
                 types.Tool(
@@ -166,6 +124,74 @@ class MCPServer:
                     }
                 )
             ]
+            
+            # Add ComfyUI-specific tools if using ComfyUI
+            if self.config.provider == "comfyui":
+                # Add LoRA parameter to generate_image if LoRAs are enabled
+                if self.config.enable_loras:
+                    tools[0].inputSchema["properties"]["loras"] = {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of LoRA names to apply",
+                        "default": []
+                    }
+                
+                # Add ComfyUI-specific tools
+                tools.extend([
+                    types.Tool(
+                        name="edit_generated_image",
+                        description="Edit or refine a previously generated image",
+                        inputSchema={
+                            "type": "object",
+                            "properties": {
+                                "image_id": {
+                                    "type": "string",
+                                    "description": "ID of the image to edit"
+                                },
+                                "new_prompt": {
+                                    "type": "string",
+                                    "description": "New or modified prompt for the edit"
+                                },
+                                "negative_prompt": {
+                                    "type": "string",
+                                    "description": "Negative prompt for the edit",
+                                    "default": ""
+                                },
+                                "edit_strength": {
+                                    "type": "number",
+                                    "description": "Denoising strength for edit (0.1-1.0)",
+                                    "minimum": 0.1,
+                                    "maximum": 1.0,
+                                    "default": 0.7
+                                }
+                            },
+                            "required": ["image_id", "new_prompt"]
+                        }
+                    )
+                ])
+                
+                # Add LoRA tool if LoRAs are enabled
+                if self.config.enable_loras:
+                    tools[1].inputSchema["properties"]["loras"] = {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "LoRAs to apply for the edit",
+                        "default": []
+                    }
+                    
+                    tools.append(
+                        types.Tool(
+                            name="list_available_loras",
+                            description="List available LoRA models for image generation",
+                            inputSchema={
+                                "type": "object",
+                                "properties": {},
+                                "additionalProperties": False
+                            }
+                        )
+                    )
+            
+            return tools
         
         @self.server.call_tool()
         async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
@@ -175,8 +201,20 @@ class MCPServer:
                 if name == "generate_image":
                     return await self._handle_generate_image(arguments)
                 elif name == "edit_generated_image":
+                    # Only available for ComfyUI
+                    if self.config.provider != "comfyui":
+                        return [types.TextContent(
+                            type="text",
+                            text="Error: Image editing is only available with ComfyUI provider"
+                        )]
                     return await self._handle_edit_image(arguments)
                 elif name == "list_available_loras":
+                    # Only available for ComfyUI with LoRAs enabled
+                    if self.config.provider != "comfyui" or not self.config.enable_loras:
+                        return [types.TextContent(
+                            type="text",
+                            text="Error: LoRAs are only available with ComfyUI provider when enable_loras is true"
+                        )]
                     return await self._handle_list_loras(arguments)
                 elif name == "get_generation_history":
                     return await self._handle_get_history(arguments)
@@ -201,6 +239,27 @@ class MCPServer:
         height = arguments.get("height", 1024)
         seed = arguments.get("seed")
         
+        # Provider-specific handling
+        if self.config.provider == "comfyui":
+            return await self._handle_comfyui_generation(
+                prompt, negative_prompt, loras, width, height, seed
+            )
+        elif self.config.provider == "replicate":
+            return await self._handle_replicate_generation(
+                prompt, negative_prompt, width, height, seed
+            )
+        else:
+            return [types.TextContent(
+                type="text",
+                text=f"Error: Unsupported provider: {self.config.provider}"
+            )]
+    
+    async def _handle_comfyui_generation(
+        self, prompt: str, negative_prompt: str, loras: list, 
+        width: int, height: int, seed: Optional[int]
+    ) -> list[types.TextContent | types.ImageContent]:
+        """Handle ComfyUI image generation"""
+        
         # Check if LoRAs are enabled
         if loras and not self.config.enable_loras:
             return [types.TextContent(
@@ -222,7 +281,7 @@ class MCPServer:
             
             try:
                 # Generate image
-                logger.info(f"Generating image with prompt: {prompt[:100]}...")
+                logger.info(f"Generating image with ComfyUI. Prompt: {prompt[:100]}...")
                 image_data, metadata = await client.generate_image(
                     workflow_template=self.workflow_template,
                     prompt=prompt,
@@ -247,7 +306,7 @@ class MCPServer:
                 return [
                     types.TextContent(
                         type="text",
-                        text=f"Image generated successfully!\n\n"
+                        text=f"Image generated successfully with ComfyUI!\n\n"
                              f"**Image ID:** {generated_image.image_id}\n"
                              f"**Prompt:** {prompt}\n"
                              f"**Seed:** {metadata.seed}\n"
@@ -263,10 +322,82 @@ class MCPServer:
                 ]
                 
             except Exception as e:
-                logger.error(f"Image generation failed: {e}")
+                logger.error(f"ComfyUI image generation failed: {e}")
                 return [types.TextContent(
                     type="text",
-                    text=f"Image generation failed: {str(e)}"
+                    text=f"ComfyUI image generation failed: {str(e)}"
+                )]
+    
+    async def _handle_replicate_generation(
+        self, prompt: str, negative_prompt: str, 
+        width: int, height: int, seed: Optional[int]
+    ) -> list[types.TextContent | types.ImageContent]:
+        """Handle Replicate image generation"""
+        
+        if not self.config.replicate:
+            return [types.TextContent(
+                type="text",
+                text="Error: Replicate configuration not found"
+            )]
+        
+        async with ReplicateClient(
+            api_key=self.config.replicate.api_key,
+            model_id=self.config.replicate.model_id,
+            default_speed_mode=self.config.replicate.default_speed_mode
+        ) as client:
+            # Check connection
+            if not await client.check_connection():
+                return [types.TextContent(
+                    type="text",
+                    text="Error: Cannot connect to Replicate API. Please check your API key."
+                )]
+            
+            try:
+                # Generate image
+                logger.info(f"Generating image with Replicate. Prompt: {prompt[:100]}...")
+                image_data, metadata = await client.generate_image(
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    seed=seed,
+                    width=width,
+                    height=height,
+                    speed_mode=self.config.replicate.default_speed_mode
+                )
+                
+                # Store image
+                generated_image = await self.storage.store_image(
+                    image_data=image_data,
+                    metadata=metadata,
+                    include_base64=True
+                )
+                
+                logger.info(f"Image generated successfully: {generated_image.image_id}")
+                
+                # Return both text and image content
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=f"Image generated successfully with Replicate!\n\n"
+                             f"**Image ID:** {generated_image.image_id}\n"
+                             f"**Prompt:** {prompt}\n"
+                             f"**Model:** {self.config.replicate.model_id}\n"
+                             f"**Speed Mode:** {self.config.replicate.default_speed_mode}\n"
+                             f"**Seed:** {metadata.seed}\n"
+                             f"**Generation Time:** {metadata.generation_time:.2f}s\n"
+                             f"**Dimensions:** {width}x{height}"
+                    ),
+                    types.ImageContent(
+                        type="image",
+                        data=generated_image.base64_data,
+                        mimeType="image/png"
+                    )
+                ]
+                
+            except Exception as e:
+                logger.error(f"Replicate image generation failed: {e}")
+                return [types.TextContent(
+                    type="text",
+                    text=f"Replicate image generation failed: {str(e)}"
                 )]
     
     async def _handle_edit_image(self, arguments: dict) -> list[types.TextContent | types.ImageContent]:
@@ -454,35 +585,60 @@ class MCPServer:
         """Handle server status requests"""
         
         try:
-            # Check ComfyUI connection
-            async with ComfyUIClient(
-                self.config.comfyui_url,
-                http_timeout=self.config.http_timeout,
-                websocket_timeout=self.config.websocket_timeout
-            ) as client:
-                comfyui_status = await client.check_connection()
-            
             # Get storage stats
             storage_stats = await self.storage.get_storage_stats()
             
             status_text = f"""**Imagyn MCP Server Status**
 
-**ComfyUI Connection:** {'✅ Connected' if comfyui_status else '❌ Disconnected'}
-**ComfyUI URL:** {self.config.comfyui_url}
-**Workflow File:** {self.config.workflow_file}
-**LoRAs Enabled:** {'✅ Yes (queried from ComfyUI server)' if self.config.enable_loras else '❌ No'}
+**Provider:** {self.config.provider.upper()}
 **Output Folder:** {self.config.output_folder}
 **Max Concurrent Generations:** {self.config.max_concurrent_generations}
 
 **Timeout Configuration:**
 - HTTP Timeout: {self.config.http_timeout}s
-- WebSocket Timeout: {self.config.websocket_timeout}s  
 - Generation Timeout: {self.config.default_generation_timeout}s
 
 **Storage Statistics:**
 - Total Images: {storage_stats['total_images']}
 - Total Size: {storage_stats['total_size_mb']} MB
 - Storage Location: {storage_stats['output_folder']}
+
+"""
+            
+            # Provider-specific status
+            if self.config.provider == "comfyui":
+                # Check ComfyUI connection
+                async with ComfyUIClient(
+                    self.config.comfyui_url,
+                    http_timeout=self.config.http_timeout,
+                    websocket_timeout=self.config.websocket_timeout
+                ) as client:
+                    comfyui_status = await client.check_connection()
+                
+                status_text += f"""**ComfyUI Configuration:**
+- Connection Status: {'✅ Connected' if comfyui_status else '❌ Disconnected'}
+- ComfyUI URL: {self.config.comfyui_url}
+- Workflow File: {self.config.workflow_file}
+- LoRAs Enabled: {'✅ Yes (queried from ComfyUI server)' if self.config.enable_loras else '❌ No'}
+- WebSocket Timeout: {self.config.websocket_timeout}s
+"""
+            
+            elif self.config.provider == "replicate":
+                # Check Replicate connection
+                async with ReplicateClient(
+                    api_key=self.config.replicate.api_key,
+                    model_id=self.config.replicate.model_id,
+                    default_speed_mode=self.config.replicate.default_speed_mode
+                ) as client:
+                    replicate_status = await client.check_connection()
+                    model_info = await client.get_model_info()
+                
+                status_text += f"""**Replicate Configuration:**
+- Connection Status: {'✅ Connected' if replicate_status else '❌ Disconnected (check API key)'}
+- Model ID: {self.config.replicate.model_id}
+- Model Name: {model_info.get('name', 'Unknown')}
+- Model Owner: {model_info.get('owner', 'Unknown')}
+- Speed Mode: {self.config.replicate.default_speed_mode}
 """
             
             return [types.TextContent(type="text", text=status_text)]
@@ -500,18 +656,25 @@ class MCPServer:
         
         # Validate configuration
         try:
-            workflow_path = Path(self.config.workflow_file)
-            if not workflow_path.exists():
-                logger.error(f"Workflow file not found: {self.config.workflow_file}")
-                return
+            if self.config.provider == "comfyui":
+                workflow_path = Path(self.config.workflow_file)
+                if not workflow_path.exists():
+                    logger.error(f"Workflow file not found: {self.config.workflow_file}")
+                    return
+                logger.info(f"ComfyUI URL: {self.config.comfyui_url}")
+                logger.info(f"Workflow: {self.config.workflow_file}")
+                logger.info(f"LoRAs enabled: {self.config.enable_loras} (queried from ComfyUI server)")
+            
+            elif self.config.provider == "replicate":
+                logger.info(f"Replicate Model: {self.config.replicate.model_id}")
+                logger.info(f"Speed Mode: {self.config.replicate.default_speed_mode}")
+                logger.info("LoRAs: Not applicable for Replicate provider")
         
         except Exception as e:
             logger.error(f"Configuration validation failed: {e}")
             return
         
-        logger.info(f"ComfyUI URL: {self.config.comfyui_url}")
-        logger.info(f"Workflow: {self.config.workflow_file}")
-        logger.info(f"LoRAs enabled: {self.config.enable_loras} (queried from ComfyUI server)")
+        logger.info(f"Provider: {self.config.provider}")
         logger.info(f"Output folder: {self.config.output_folder}")
         
         # Run the MCP server

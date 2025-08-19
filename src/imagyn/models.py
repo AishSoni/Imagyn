@@ -5,21 +5,33 @@ Configuration and data models for Imagyn MCP server
 import json
 import os
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Literal
 from pathlib import Path
+
+
+@dataclass
+class ReplicateConfig:
+    """Configuration for Replicate API"""
+    api_key: str
+    model_id: str
+    default_speed_mode: str = "Extra Juiced 🔥 (more speed)"
 
 
 @dataclass
 class ImagynConfig:
     """Configuration for the Imagyn MCP server"""
-    comfyui_url: str
-    workflow_file: str
-    enable_loras: bool
+    provider: Literal["comfyui", "replicate"]
     output_folder: str
     max_concurrent_generations: int = 3
     default_generation_timeout: int = 300
     http_timeout: float = 60.0
     websocket_timeout: float = 30.0
+    # ComfyUI-specific settings (optional)
+    comfyui_url: Optional[str] = None
+    workflow_file: Optional[str] = None
+    enable_loras: Optional[bool] = None
+    # Replicate-specific settings (optional)
+    replicate: Optional[ReplicateConfig] = None
 
     @classmethod
     def load_from_file(cls, config_path: str = "config.json") -> "ImagynConfig":
@@ -32,6 +44,26 @@ class ImagynConfig:
         
         # Remove deprecated lora_folder_path if present for backward compatibility
         config_data.pop('lora_folder_path', None)
+        
+        # Handle replicate config
+        replicate_data = config_data.get('replicate')
+        if replicate_data:
+            config_data['replicate'] = ReplicateConfig(**replicate_data)
+        
+        # Validate provider-specific configurations
+        provider = config_data.get('provider')
+        if provider == 'comfyui':
+            if not config_data.get('comfyui_url'):
+                raise ValueError("comfyui_url is required when provider is 'comfyui'")
+            if not config_data.get('workflow_file'):
+                raise ValueError("workflow_file is required when provider is 'comfyui'")
+            if 'enable_loras' not in config_data:
+                raise ValueError("enable_loras is required when provider is 'comfyui'")
+        elif provider == 'replicate':
+            if not config_data.get('replicate'):
+                raise ValueError("replicate configuration is required when provider is 'replicate'")
+        else:
+            raise ValueError(f"Unsupported provider: {provider}")
         
         return cls(**config_data)
 

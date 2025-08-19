@@ -1,22 +1,23 @@
 # Imagyn MCP Server
 
-An open-source Model Context Protocol (MCP) server that bridges LLMs with ComfyUI workflows for seamless text-to-image generation and iterative image editing.
+An open-source Model Context Protocol (MCP) server that bridges LLMs with image generation providers for seamless text-to-image generation. Supports both ComfyUI workflows and Replicate API.
 
 ## 🚀 Features
 
-- **Text-to-Image Generation**: Generate high-quality images from text prompts using ComfyUI workflows
-- **Image Editing**: Refine and modify generated images with new prompts
-- **LoRA Support**: Apply custom LoRA models for specialized styles and effects
+- **Multiple Providers**: Choose between ComfyUI or Replicate for image generation
+- **Text-to-Image Generation**: Generate high-quality images from text prompts
+- **Image Editing**: Refine and modify generated images (ComfyUI only)
+- **LoRA Support**: Apply custom LoRA models for specialized styles (ComfyUI only)
 - **Generation History**: Track and retrieve previous generations
 - **Inline Image Display**: Generated images are shown directly in the chat interface
-- **ComfyUI Integration**: Full compatibility with ComfyUI API and workflows
 - **Storage Management**: Automatic image storage with metadata tracking
 
 ## 📋 Requirements
 
 - Python 3.10+
-- ComfyUI server running locally or remotely
 - MCP-compatible client (Claude Desktop, custom implementations)
+- **For ComfyUI provider**: ComfyUI server running locally or remotely
+- **For Replicate provider**: Replicate API key
 
 ## 🛠️ Installation
 
@@ -42,12 +43,91 @@ pip install -e .
 
 ## ⚙️ Configuration
 
-Create or modify `config.json` in the project root:
+### Provider Selection
+
+Choose your image generation provider by setting the `provider` field in `config.json`:
+
+### ComfyUI Provider
+
+For local ComfyUI workflows with full control and LoRA support:
 
 ```json
 {
+  "provider": "comfyui",
   "comfyui_url": "http://localhost:8188",
   "workflow_file": "workflows/txt2img_flux.json",
+  "enable_loras": true,
+  "output_folder": "output",
+  "max_concurrent_generations": 3,
+  "default_generation_timeout": 300,
+  "http_timeout": 60.0,
+  "websocket_timeout": 30.0
+}
+```
+
+### Replicate Provider
+
+For cloud-based generation with Replicate's hosted models:
+
+```json
+{
+  "provider": "replicate",
+  "output_folder": "output",
+  "max_concurrent_generations": 3,
+  "default_generation_timeout": 300,
+  "http_timeout": 60.0,
+  "replicate": {
+    "api_key": "your_replicate_api_key_here",
+    "model_id": "prunaai/flux.1-dev:b0306d92aa025bb747dc74162f3c27d6ed83798e08e5f8977adf3d859d0536a3",
+    "default_speed_mode": "Extra Juiced 🔥 (more speed)"
+  }
+}
+```
+
+### Configuration Fields
+
+#### Common Fields (All Providers)
+- `provider`: Either "comfyui" or "replicate"
+- `output_folder`: Directory for storing generated images
+- `max_concurrent_generations`: Maximum simultaneous generations
+- `default_generation_timeout`: Timeout for generation in seconds
+- `http_timeout`: HTTP request timeout
+
+#### ComfyUI-Specific Fields
+- `comfyui_url`: URL of your ComfyUI server
+- `workflow_file`: Path to your ComfyUI workflow JSON file
+- `enable_loras`: Whether to enable LoRA support
+- `websocket_timeout`: WebSocket connection timeout
+
+#### Replicate-Specific Fields
+- `replicate.api_key`: Your Replicate API key
+- `replicate.model_id`: The Replicate model to use (format: "owner/name:version")
+- `replicate.default_speed_mode`: Speed mode for generation
+
+## 🎨 Available Tools
+
+The available tools depend on your selected provider:
+
+### All Providers
+- `generate_image`: Generate images from text prompts
+- `get_generation_history`: View recent generations
+- `get_server_status`: Check server status and configuration
+
+### ComfyUI Only
+- `edit_generated_image`: Edit previously generated images
+- `list_available_loras`: List available LoRA models (if enabled)
+
+### Provider Differences
+
+| Feature | ComfyUI | Replicate |
+|---------|---------|-----------|
+| Image Generation | ✅ | ✅ |
+| Image Editing | ✅ | ❌ |
+| LoRA Support | ✅ | ❌ |
+| Negative Prompts | ✅ | ⚠️ (Limited) |
+| Custom Workflows | ✅ | ❌ |
+| Cloud Hosting | ❌ | ✅ |
+| API Key Required | ❌ | ✅ |
   "enable_loras": true,
   "lora_folder_path": "models/loras",
   "output_folder": "output",
