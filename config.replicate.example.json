@@ -1,0 +1,11 @@
+{
+  "provider": "replicate",
+  "output_folder": "output",
+  "max_concurrent_generations": 3,
+  "default_generation_timeout": 300,
+  "http_timeout": 60.0,
+  "replicate": {
+    "api_key": "your_replicate_api_key_here",
+    "model_id": "black-forest-labs/flux-dev"
+  }
+}

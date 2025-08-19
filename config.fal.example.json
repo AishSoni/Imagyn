@@ -1,4 +1,5 @@
 {
+  "provider": "fal",
   "comfyui_url": "http://localhost:8000",
   "workflow_file": "workflows/fluxkrea.json",
   "enable_loras": true,
@@ -6,5 +7,9 @@
   "max_concurrent_generations": 3,
   "default_generation_timeout": 300,
   "http_timeout": 60.0,
-  "websocket_timeout": 30.0
+  "websocket_timeout": 30.0,
+  "fal": {
+    "api_key": "your_fal_api_key_here",
+    "model_id": "fal-ai/flux-1/krea"
+  }
 }
