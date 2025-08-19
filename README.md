@@ -201,10 +201,6 @@ View available LoRA models (ComfyUI)
 - [ ] **Style Presets**: Curated style combinations and presets
 - [ ] **More Providers**: A1111, InvokeAI, and additional cloud services
 
-## 🤝 Contributing
-
-We welcome contributions! Please check the [Issues](https://github.com/AishSoni/Imagyn/issues) page for open tasks or submit new feature requests.
-
 ### Development Setup
 
 ```bash
