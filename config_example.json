@@ -1,0 +1,20 @@
+{
+  "provider": "replicate",
+  "comfyui_url": "http://localhost:8000",
+  "workflow_file": "workflows/fluxkrea.json",
+  "enable_loras": true,
+  "output_folder": "output",
+  "max_concurrent_generations": 3,
+  "default_generation_timeout": 300,
+  "http_timeout": 60.0,
+  "websocket_timeout": 30.0,
+  "replicate": {
+    "api_key": "your_replicate_api_key_here",
+    "model_id": "prunaai/flux.1-dev:b0306d92aa025bb747dc74162f3c27d6ed83798e08e5f8977adf3d859d0536a3",
+    "default_speed_mode": "Extra Juiced 🔥 (more speed)"
+  },
+  "fal": {
+    "api_key": "your_fal_api_key_here",
+    "model_id": "fal-ai/flux-1/krea"
+  }
+}

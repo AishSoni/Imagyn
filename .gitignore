@@ -1,3 +1,52 @@
-/imagyn_venv
-/.venv
+# Virtual environments
+/imagyn_venv/
+/.venv/
+venv/
+env/
+
+# Python bytecode
 *.pyc
+__pycache__/
+*.pyo
+*.pyd
+
+# Configuration files with API keys
+config.json
+config.*.json
+
+# Allow example configuration files (needed for user setup)
+!config_example.json
+!config.*.example.json
+!*example*.json
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# API keys and secrets
+*.key
+*.pem
+secrets.json
+auth.json
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Output directories
+output/
+logs/
+*.log

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "imagyn-mcp-server"
 version = "0.1.0"
-description = "Open-source MCP server for image generation via ComfyUI"
+description = "Open-source MCP server for image generation via ComfyUI, Replicate, and Fal.ai"
 authors = [
     {name = "Imagyn Contributors", email = "hello@imagyn.dev"}
 ]
@@ -30,6 +30,8 @@ dependencies = [
     "python-multipart>=0.0.6",
     "anyio>=4.0.0",
     "websockets>=11.0.0",
+    "replicate>=1.0.0",
+    "fal-client>=0.4.0",
 ]
 
 [project.optional-dependencies]

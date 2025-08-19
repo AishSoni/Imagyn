@@ -2,7 +2,7 @@
   "mcpServers": {
     "imagyn": {
       "command": "python",
-      "args": ["E:\\Imagyn\\src\\imagyn\\fastmcp_main.py"],
+      "args": ["E:\\Imagyn\\stdio_mcp_server.py"],
       "env": {
         "IMAGYN_CONFIG": "E:\\Imagyn\\config.json"
       }

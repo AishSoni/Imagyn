@@ -6,7 +6,6 @@
   "http_timeout": 60.0,
   "replicate": {
     "api_key": "your_replicate_api_key_here",
-    "model_id": "prunaai/flux.1-dev:b0306d92aa025bb747dc74162f3c27d6ed83798e08e5f8977adf3d859d0536a3",
-    "default_speed_mode": "Extra Juiced 🔥 (more speed)"
+    "model_id": "black-forest-labs/flux-dev"
   }
 }
